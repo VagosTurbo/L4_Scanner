@@ -1,0 +1,14 @@
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/bin/Debug/net9.0/ipk-l4-scan
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/bin/Debug/net9.0/ipk-l4-scan.deps.json
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/bin/Debug/net9.0/ipk-l4-scan.runtimeconfig.json
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/bin/Debug/net9.0/ipk-l4-scan.dll
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/bin/Debug/net9.0/ipk-l4-scan.pdb
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/ipk-l4-scan.GeneratedMSBuildEditorConfig.editorconfig
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/ipk-l4-scan.AssemblyInfoInputs.cache
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/ipk-l4-scan.AssemblyInfo.cs
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/ipk-l4-scan.csproj.CoreCompileInputs.cache
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/ipk-l4-scan.dll
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/refint/ipk-l4-scan.dll
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/ipk-l4-scan.pdb
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/ipk-l4-scan.genruntimeconfig.cache
+/home/boris-semanco/RiderProjects/ipk-l4-scan/ipk-l4-scan/obj/Debug/net9.0/ref/ipk-l4-scan.dll
