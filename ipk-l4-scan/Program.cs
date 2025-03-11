@@ -17,36 +17,45 @@ class Program
 
         var parser = new ArgumentParser(args);
 
-        if (string.IsNullOrEmpty(parser.Target) && string.IsNullOrEmpty(parser.InterfaceName))
-        {
-            Console.WriteLine("Error: No target or interface specified.");
-            return;
-        }
+        IPAddress srcAddress = GetInterfaceAddresses(parser.InterfaceName)[0];
 
-        IPAddress[] addresses;
-        IPAddress localAddress = null;
-        if (!string.IsNullOrEmpty(parser.InterfaceName))
-        {
-            addresses = GetInterfaceAddresses(parser.InterfaceName);
-            if (addresses.Length == 0)
-            {
-                Console.WriteLine($"Error: No addresses found for interface {parser.InterfaceName}.");
-                return;
-            }
-            localAddress = addresses[0]; // Use the first address of the interface
-        }
+        // Resolve target address
+        IPAddress[] dstAddresses;
+        if (IPAddress.TryParse(parser.Target, out var parsedAddress))
+            dstAddresses = new IPAddress[] { parsedAddress };   // IP address provided
         else
+            dstAddresses = Dns.GetHostAddresses(parser.Target); // Hostname provided
+        
+        // Check if target was found
+        if (dstAddresses.Length == 0)
         {
-            addresses = Dns.GetHostAddresses(parser.Target);
-    
+            Console.Error.WriteLine("Error: Target not found.");
+            Environment.Exit(1);
         }
-
-        Console.WriteLine($"Interface: {parser.InterfaceName} ({addresses[0]})");
-        var scanner = new TcpScanner(localAddress);
-        foreach (var address in addresses)
+        
+        // Loop through all dstAddresses
+        for (int i = 0; i < dstAddresses.Length; i++)
         {
-            Console.WriteLine($"Scanning {address}...");
-            await scanner.ScanTcpPorts(address, parser.TcpPorts, parser.Timeout);
+            if (dstAddresses[i].AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
+            {   // IPv6 address
+                Console.WriteLine($"IPv6 address: {dstAddresses[i]}");
+                continue;
+            }  
+            else if (dstAddresses[i].AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            {   // IPv4 address
+                Scanner scanner;
+                if (parser.TcpPorts.Any())
+                {
+                    scanner = new TcpScanner(srcAddress);
+                    await scanner.ScanPorts(dstAddresses[i], parser.TcpPorts, parser.Timeout);
+                }
+                if (parser.UdpPorts.Any())
+                {
+                    scanner = new UdpScanner(srcAddress);
+                    await scanner.ScanPorts(dstAddresses[i], parser.UdpPorts, parser.Timeout);
+                }
+                continue;
+            }
         }
     }
 

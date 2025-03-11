@@ -4,21 +4,22 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
-class TcpScanner
+class TcpScanner : Scanner
 {
     private IPAddress _localAddress;
+    
 
     public TcpScanner(IPAddress localAddress)
     {
         _localAddress = localAddress;
     }
 
-    public async Task ScanTcpPorts(IPAddress address, List<int> ports, int timeout)
+    public async Task ScanPorts(IPAddress address, List<int> ports, int timeout)
     {
         foreach (var port in ports)
         {
             var result = await TcpSynScan(address, port, timeout);
-            Console.WriteLine($"{port}/tcp {result}");
+            Console.WriteLine($"{address} {port} tcp {result}");
         }
     }
 
@@ -29,7 +30,7 @@ class TcpScanner
         socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.HeaderIncluded, true);
 
         byte[] packet = BuildTcpSynPacket(address, port);
-        EndPoint remoteEP = new IPEndPoint(address, port);
+        EndPoint remoteEP = new IPEndPoint(address, port); 
         await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
 
         byte[] buffer = new byte[1024];
@@ -40,10 +41,7 @@ class TcpScanner
             try
             {
                 int received = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
-                if (received > 0)
-                {
-                    return AnalyzeResponse(buffer);
-                }
+                if (received > 0) return AnalyzeResponse(buffer);   // If response received, analyze it
             }
             catch (SocketException)
             {
