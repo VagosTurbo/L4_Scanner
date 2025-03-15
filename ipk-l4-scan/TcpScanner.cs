@@ -27,26 +27,22 @@ class TcpScanner : Scanner
 
     private async Task<string> TcpSynScanIpv6(IPAddress address, int port, int timeout)
     {
-        using Socket socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, (ProtocolType)255);
+        using Socket socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.Tcp);
         socket.Bind(new IPEndPoint(_localAddress, 0));
-
-        // Create a separate socket for receiving TCP responses
-        using Socket receiveSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.Tcp);
-        receiveSocket.Bind(new IPEndPoint(_localAddress, 0));
 
         byte[] packet = BuildTcpSynPacketIpv6(address, port);
         EndPoint remoteEP = new IPEndPoint(address, port);
+        await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+
+        byte[] buffer = new byte[1024];
+        var receiveTask = socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
 
         try
         {
-            await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
-
-            byte[] buffer = new byte[1024];
-            receiveSocket.ReceiveTimeout = timeout;
-
-            try
+            if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
             {
-                int received = await receiveSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+                // Received response within timeout
+                int received = await receiveTask;
                 if (received > 0)
                 {
                     return AnalyzeResponseIpv6(buffer);
@@ -54,14 +50,20 @@ class TcpScanner : Scanner
 
                 // Try one more time
                 await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
-                received = await receiveSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
-                if (received > 0)
+                receiveTask = socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+
+                if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
                 {
-                    return AnalyzeResponseIpv6(buffer);
+                    received = await receiveTask;
+                    if (received > 0)
+                    {
+                        return AnalyzeResponseIpv6(buffer);
+                    }
                 }
             }
-            catch (SocketException)
+            else
             {
+                // Timeout occurred
                 return "filtered";
             }
         }
@@ -158,25 +160,48 @@ class TcpScanner : Scanner
         await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
 
         byte[] buffer = new byte[1024];
-        socket.ReceiveTimeout = timeout;
+        var receiveTask = socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
 
         try
         {
-            int received = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
-            if (received > 0) return AnalyzeResponse(buffer);   // If response received, analyze it
+            if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
+            {
+                // Received response within timeout
+                int received = await receiveTask;
+                if (received > 0)
+                {
+                    // If the first response is not filtered, return it
+                    String result = AnalyzeResponse(buffer);
+                    if (result != "filtered")
+                    {
+                        return result;
+                    }
+                }
+
+                // Try one more time
+                await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+                receiveTask = socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+
+                if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
+                {
+                    received = await receiveTask;
+                    if (received > 0)
+                    {
+                        return AnalyzeResponse(buffer);
+                    }
+                }
+            }
             else
             {
-                Console.WriteLine("No response");
-                await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
-                received = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
-                AnalyzeResponse(buffer);
+                // Timeout occurred
+                return "filtered";
             }
         }
         catch (SocketException)
         {
-            Console.WriteLine("SocketException");
             return "filtered";
         }
+
         return "filtered";
     }
 

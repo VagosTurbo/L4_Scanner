@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using System.Linq;
+using System.Net.NetworkInformation;
 
 class UdpScanner : Scanner
 {
@@ -27,30 +29,93 @@ class UdpScanner : Scanner
 
     private async Task<string> UdpScanIpv6(IPAddress address, int port, int timeout)
     {
-        using Socket socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
-        socket.Bind(new IPEndPoint(_localAddress, 0));
+        // Create UDP socket for sending
+        using Socket udpSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Dgram, ProtocolType.Udp);
+        udpSocket.Bind(new IPEndPoint(_localAddress, 0));
 
-        byte[] packet = new byte[1]; // Minimal packet for UDP scan
-        EndPoint remoteEP = new IPEndPoint(address, port);
-        await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+        // Create ICMPv6 socket for receiving port unreachable messages
+        using Socket icmpSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.IcmpV6);
+        icmpSocket.Bind(new IPEndPoint(_localAddress, 0));
 
-        byte[] buffer = new byte[1024];
-        socket.ReceiveTimeout = timeout;
+        // Create endpoint with scope ID if available
+        IPEndPoint remoteEP;
+        if (address is IPAddress ipv6Address && ipv6Address.IsIPv6LinkLocal)
+        {
+            // Get the interface index for the local address
+            var interfaceIndex = NetworkInterface.GetAllNetworkInterfaces()
+                .First(i => i.GetIPProperties().UnicastAddresses
+                    .Any(a => a.Address.Equals(_localAddress)))
+                .GetIPProperties().GetIPv6Properties().Index;
+
+            // Create a new IPAddress with the same address bytes but the correct scope ID  
+            var addressWithScope = ipv6Address.ScopeId == 0
+                ? new IPAddress(ipv6Address.GetAddressBytes(), interfaceIndex)
+                : ipv6Address;
+
+            remoteEP = new IPEndPoint(addressWithScope, port);
+        }
+        else
+        {
+            remoteEP = new IPEndPoint(address, port);
+        }
 
         try
         {
-            var result = await socket.ReceiveFromAsync(new ArraySegment<byte>(buffer), SocketFlags.None, remoteEP);
-            if (result.ReceivedBytes > 0)
+            // First attempt
+            byte[] packet = new byte[0]; // Empty UDP packet
+            await udpSocket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+
+            byte[] buffer = new byte[1024];
+            var receiveTask = icmpSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+
+            if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
             {
-                // For IPv6, ICMPv6 Destination Unreachable message
-                if (buffer[0] == 0x3a && buffer[40] == 1 && buffer[41] == 4)  // Next Header = ICMPv6, Type 1 (Dest Unreachable), Code 4 (Port Unreachable)
+                int received = await receiveTask;
+                if (received > 0)
                 {
-                    return "closed";
+                    // Check if it's an ICMPv6 Destination Unreachable message
+                    if (buffer[0] == 1 && buffer[1] == 4) // Type 1 = Destination Unreachable, Code 4 = Port Unreachable
+                    {
+                        // Verify this ICMP response is for our UDP packet
+                        byte[] originalDstPort = new byte[2];
+                        originalDstPort[0] = (byte)(port >> 8);
+                        originalDstPort[1] = (byte)(port & 0xFF);
+
+                        if (buffer[48 + 2] == originalDstPort[0] && buffer[48 + 3] == originalDstPort[1])
+                        {
+                            return "closed";
+                        }
+                    }
+                }
+            }
+
+            // Second attempt
+            await udpSocket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+            receiveTask = icmpSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+
+            if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
+            {
+                int received = await receiveTask;
+                if (received > 0)
+                {
+                    if (buffer[0] == 1 && buffer[1] == 4)
+                    {
+                        byte[] originalDstPort = new byte[2];
+                        originalDstPort[0] = (byte)(port >> 8);
+                        originalDstPort[1] = (byte)(port & 0xFF);
+
+                        if (buffer[48 + 2] == originalDstPort[0] && buffer[48 + 3] == originalDstPort[1])
+                        {
+                            return "closed";
+                        }
+                    }
                 }
             }
         }
-        catch (SocketException)
+        catch (SocketException ex)
         {
+            // Socket error, consider port open
+            Console.Error.WriteLine($"Socket error: {ex.Message}");
             return "open";
         }
 
@@ -59,29 +124,72 @@ class UdpScanner : Scanner
 
     private async Task<string> UdpScan(IPAddress address, int port, int timeout)
     {
-        using Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        socket.Bind(new IPEndPoint(_localAddress, 0));
+        // Create UDP socket for sending
+        using Socket udpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        udpSocket.Bind(new IPEndPoint(_localAddress, 0));
 
-        byte[] packet = new byte[1]; // Minimal packet for UDP scan
-        EndPoint remoteEP = new IPEndPoint(address, port);
-        await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
-
-        byte[] buffer = new byte[1024];
-        socket.ReceiveTimeout = timeout;
+        // Create ICMP socket for receiving port unreachable messages
+        using Socket icmpSocket = new Socket(AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp);
+        icmpSocket.Bind(new IPEndPoint(_localAddress, 0));
 
         try
         {
-            var result = await socket.ReceiveFromAsync(new ArraySegment<byte>(buffer), SocketFlags.None, remoteEP);
-            if (result.ReceivedBytes > 0)
+            // First attempt
+            byte[] packet = new byte[0]; // Empty UDP packet
+            EndPoint remoteEP = new IPEndPoint(address, port);
+            await udpSocket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+
+            byte[] buffer = new byte[1024];
+            var receiveTask = icmpSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+
+            if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
             {
-                if (buffer[20] == 3 && buffer[21] == 3) // ICMP type 3, code 3
+                int received = await receiveTask;
+                if (received > 0)
                 {
-                    return "closed";
+                    // Check if it's an ICMP Destination Unreachable message
+                    if (buffer[20] == 3 && buffer[21] == 3) // Type 3 = Destination Unreachable, Code 3 = Port Unreachable
+                    {
+                        // Verify this ICMP response is for our UDP packet
+                        byte[] originalDstPort = new byte[2];
+                        originalDstPort[0] = (byte)(port >> 8);
+                        originalDstPort[1] = (byte)(port & 0xFF);
+
+                        if (buffer[48 + 2] == originalDstPort[0] && buffer[48 + 3] == originalDstPort[1])
+                        {
+                            return "closed";
+                        }
+                    }
+                }
+            }
+
+            // Second attempt
+            await udpSocket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+            receiveTask = icmpSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+
+            if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
+            {
+                int received = await receiveTask;
+                if (received > 0)
+                {
+                    if (buffer[20] == 3 && buffer[21] == 3)
+                    {
+                        byte[] originalDstPort = new byte[2];
+                        originalDstPort[0] = (byte)(port >> 8);
+                        originalDstPort[1] = (byte)(port & 0xFF);
+
+                        if (buffer[48 + 2] == originalDstPort[0] && buffer[48 + 3] == originalDstPort[1])
+                        {
+                            return "closed";
+                        }
+                    }
                 }
             }
         }
-        catch (SocketException)
+        catch (SocketException ex)
         {
+            // Socket error, consider port open/filtered
+            Console.Error.WriteLine($"Socket error: {ex.Message}");
             return "open";
         }
 
