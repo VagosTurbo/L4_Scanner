@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 class TcpScanner : Scanner
 {
     private IPAddress _localAddress;
-    
 
     public TcpScanner(IPAddress localAddress)
     {
@@ -16,11 +15,136 @@ class TcpScanner : Scanner
 
     public async Task ScanPorts(IPAddress address, List<int> ports, int timeout)
     {
+        bool isIpv6 = address.AddressFamily == AddressFamily.InterNetworkV6;
         foreach (var port in ports)
         {
-            var result = await TcpSynScan(address, port, timeout);
+            var result = isIpv6 ?
+                await TcpSynScanIpv6(address, port, timeout) :
+                await TcpSynScan(address, port, timeout);
             Console.WriteLine($"{address} {port} tcp {result}");
         }
+    }
+
+    private async Task<string> TcpSynScanIpv6(IPAddress address, int port, int timeout)
+    {
+        using Socket socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, (ProtocolType)255);
+        socket.Bind(new IPEndPoint(_localAddress, 0));
+
+        // Create a separate socket for receiving TCP responses
+        using Socket receiveSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.Tcp);
+        receiveSocket.Bind(new IPEndPoint(_localAddress, 0));
+
+        byte[] packet = BuildTcpSynPacketIpv6(address, port);
+        EndPoint remoteEP = new IPEndPoint(address, port);
+
+        try
+        {
+            await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+
+            byte[] buffer = new byte[1024];
+            receiveSocket.ReceiveTimeout = timeout;
+
+            try
+            {
+                int received = await receiveSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+                if (received > 0)
+                {
+                    return AnalyzeResponseIpv6(buffer);
+                }
+
+                // Try one more time
+                await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+                received = await receiveSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+                if (received > 0)
+                {
+                    return AnalyzeResponseIpv6(buffer);
+                }
+            }
+            catch (SocketException)
+            {
+                return "filtered";
+            }
+        }
+        catch (SocketException ex)
+        {
+            Console.Error.WriteLine($"Socket error: {ex.Message}");
+            return "filtered";
+        }
+
+        return "filtered";
+    }
+
+    private string AnalyzeResponseIpv6(byte[] buffer)
+    {
+        // In IPv6, TCP header starts at offset 40 (after IPv6 header)
+        byte flags = buffer[53];  // 40 (IPv6 header) + 13 (TCP flags offset)
+
+        if (flags == 0x12) // SYN-ACK
+            return "open";
+        if (flags == 0x14) // RST
+            return "closed";
+
+        return "filtered";
+    }
+
+    private byte[] BuildTcpSynPacketIpv6(IPAddress address, int port)
+    {
+        byte[] packet = new byte[60]; // 40 bytes IPv6 header + 20 bytes TCP header
+        Random rand = new Random();
+
+        // IPv6 Header
+        packet[0] = 0x60; // Version (6) << 4 | Traffic Class high nibble (0)
+        packet[1] = 0x00; // Traffic Class low nibble (0) | Flow Label high 4 bits (0)
+        packet[2] = 0x00; packet[3] = 0x00; // Flow Label low 16 bits
+        packet[4] = 0x00; packet[5] = 0x14; // Payload Length (20 bytes TCP header)
+        packet[6] = 0x06; // Next Header (TCP)
+        packet[7] = 0x40; // Hop Limit (64)
+
+        // Source IPv6 Address (16 bytes)
+        byte[] srcAddr = _localAddress.GetAddressBytes();
+        Buffer.BlockCopy(srcAddr, 0, packet, 8, 16);
+
+        // Destination IPv6 Address (16 bytes)
+        byte[] destAddr = address.GetAddressBytes();
+        Buffer.BlockCopy(destAddr, 0, packet, 24, 16);
+
+        // TCP Header (starts at offset 40)
+        ushort srcPort = (ushort)rand.Next(1024, 65535);
+        packet[40] = (byte)(srcPort >> 8);
+        packet[41] = (byte)(srcPort & 0xFF);
+        packet[42] = (byte)(port >> 8);
+        packet[43] = (byte)(port & 0xFF);
+        packet[44] = 0x00; packet[45] = 0x00; packet[46] = 0x00; packet[47] = 0x00; // Sequence Number
+        packet[48] = 0x00; packet[49] = 0x00; packet[50] = 0x00; packet[51] = 0x00; // Acknowledgment Number
+        packet[52] = 0x50; // Data Offset (5 * 4 = 20 bytes), Reserved
+        packet[53] = 0x02; // Flags (SYN)
+        packet[54] = 0x72; packet[55] = 0x10; // Window Size
+        packet[56] = 0x00; packet[57] = 0x00; // Checksum (to be calculated)
+        packet[58] = 0x00; packet[59] = 0x00; // Urgent Pointer
+
+        // Calculate TCP checksum for IPv6
+        ushort tcpChecksum = ComputeTcpChecksumIpv6(packet, srcAddr, destAddr);
+        packet[56] = (byte)(tcpChecksum >> 8);
+        packet[57] = (byte)(tcpChecksum & 0xFF);
+
+        return packet;
+    }
+
+    private ushort ComputeTcpChecksumIpv6(byte[] packet, byte[] srcAddr, byte[] destAddr)
+    {
+        int tcpLength = 20;
+        byte[] pseudoHeader = new byte[40 + tcpLength]; // IPv6 pseudo-header (40 bytes) + TCP segment
+
+        // Pseudo Header for IPv6 (src IP, dest IP, TCP length, zeros, next header)
+        Buffer.BlockCopy(srcAddr, 0, pseudoHeader, 0, 16);
+        Buffer.BlockCopy(destAddr, 0, pseudoHeader, 16, 16);
+        pseudoHeader[32] = 0x00; pseudoHeader[33] = 0x00; pseudoHeader[34] = 0x00; pseudoHeader[35] = (byte)tcpLength;
+        pseudoHeader[36] = 0x00; pseudoHeader[37] = 0x00; pseudoHeader[38] = 0x00; pseudoHeader[39] = 0x06; // Next Header (TCP)
+
+        // Copy TCP Header
+        Buffer.BlockCopy(packet, 40, pseudoHeader, 40, tcpLength);
+
+        return ComputeChecksum(pseudoHeader, 0, pseudoHeader.Length);
     }
 
     private async Task<string> TcpSynScan(IPAddress address, int port, int timeout)
@@ -30,26 +154,29 @@ class TcpScanner : Scanner
         socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.HeaderIncluded, true);
 
         byte[] packet = BuildTcpSynPacket(address, port);
-        EndPoint remoteEP = new IPEndPoint(address, port); 
+        EndPoint remoteEP = new IPEndPoint(address, port);
         await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
 
         byte[] buffer = new byte[1024];
         socket.ReceiveTimeout = timeout;
 
-        for (int attempt = 0; attempt < 2; attempt++) // Try twice before marking as filtered
+        try
         {
-            try
+            int received = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+            if (received > 0) return AnalyzeResponse(buffer);   // If response received, analyze it
+            else
             {
-                int received = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
-                if (received > 0) return AnalyzeResponse(buffer);   // If response received, analyze it
-            }
-            catch (SocketException)
-            {
-                if (attempt == 0) continue; // Try again
-                return "filtered";
+                Console.WriteLine("No response");
+                await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
+                received = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+                AnalyzeResponse(buffer);
             }
         }
-    
+        catch (SocketException)
+        {
+            Console.WriteLine("SocketException");
+            return "filtered";
+        }
         return "filtered";
     }
 
@@ -119,7 +246,7 @@ class TcpScanner : Scanner
             ushort word = (ushort)((buffer[i] << 8) + (i + 1 < buffer.Length ? buffer[i + 1] : 0));
             sum += word;
         }
-        
+
         while ((sum >> 16) != 0)
         {
             sum = (sum & 0xFFFF) + (sum >> 16);
