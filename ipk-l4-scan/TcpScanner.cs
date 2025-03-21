@@ -31,7 +31,7 @@ class TcpScanner : Scanner
         socket.Bind(new IPEndPoint(_localAddress, 0));
 
         byte[] packet = BuildTcpSynPacketIpv6(address, port);
-        EndPoint remoteEP = new IPEndPoint(address, port);
+        EndPoint remoteEP = new IPEndPoint(address, 0);
         await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
 
         byte[] buffer = new byte[1024];
