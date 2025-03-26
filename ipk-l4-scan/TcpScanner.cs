@@ -27,7 +27,7 @@ class TcpScanner : Scanner
 
     private async Task<string> TcpSynScanIpv6(IPAddress address, int port, int timeout)
     {
-        using Socket socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.Tcp);
+        using Socket socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.Raw);
         socket.Bind(new IPEndPoint(_localAddress, 0));
 
         byte[] packet = BuildTcpSynPacketIpv6(address, port);

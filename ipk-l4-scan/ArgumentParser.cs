@@ -6,11 +6,9 @@ class ArgumentParser
 {
     public string InterfaceName { get; private set; } = "";
     public List<int> TcpPorts { get; private set; } = new();
-
     public List<int> UdpPorts { get; private set; } = new();
     public int Timeout { get; private set; } = 5000;
     public string Target { get; private set; } = "";
-
 
     public ArgumentParser(string[] args)
     {
@@ -25,8 +23,7 @@ class ArgumentParser
             {
                 case "-h":
                 case "--help":
-                    PrintHelp();
-                    break;
+                    throw new Exception("Help requested");
                 case "-i":
                 case "--interface":
                     InterfaceName = args[++i];
@@ -52,21 +49,16 @@ class ArgumentParser
         // Mandatory arguments checks
         if (string.IsNullOrEmpty(InterfaceName))
         {
-            Console.Error.WriteLine("Error: No interface specified.");
-            Environment.Exit(1);
+            throw new Exception("Error: No interface specified.");
         }
         if (string.IsNullOrEmpty(Target))
         {
-            Console.Error.WriteLine("Error: No target specified.");
-            Environment.Exit(1);
+            throw new Exception("Error: No target specified.");
         }
         if (TcpPorts.Count == 0 && UdpPorts.Count == 0)
         {
-            Console.Error.WriteLine("Error: No ports specified.");
-            Environment.Exit(1);
+            throw new Exception("Error: No ports specified.");
         }
-
-
     }
 
     private List<int> ParsePortRange(string input)
@@ -86,6 +78,5 @@ class ArgumentParser
     {
         Console.WriteLine("./ipk-l4-scan {-h} [-i interface | --interface interface] [--pu port-ranges | --pt port-ranges | -u port-ranges | -t port-ranges] {-w timeout} [hostname | ip-address]");
         Console.WriteLine();
-        Environment.Exit(0);
     }
 }
