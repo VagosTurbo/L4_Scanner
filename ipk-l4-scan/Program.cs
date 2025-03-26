@@ -91,14 +91,17 @@ class Program
 
     static IPAddress[] GetInterfaceAddresses(string interfaceName)
     {
+        // Get all network interfaces and find the one with the matching name
         var netInterface = NetworkInterface.GetAllNetworkInterfaces()
             .FirstOrDefault(ni => ni.Name.Equals(interfaceName, StringComparison.OrdinalIgnoreCase));
 
+        // If no matching interface found, return empty array
         if (netInterface == null)
         {
             return Array.Empty<IPAddress>();
         }
 
+        // Get all IP addresses for the matching interface
         return netInterface.GetIPProperties()
             .UnicastAddresses
             .Select(ua => ua.Address)
