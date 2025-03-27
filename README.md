@@ -243,9 +243,9 @@ sudo dotnet run -i eth0 -t 80,443 -u 53 -w 1000 example.com
 
    ```
    Input: sudo ./ipk-l4-scan -i tun0 -u 53 scanme.nmap.org
-   Expected: Port 53 open
+   Expected: Port 53 closed
    Actual: Port 53 closed
-   Nmap Result: Not matched
+   Nmap Result: Matched
    Wireshark Capture: ICMP Port Unreachable for closed ports
    ```
 
@@ -267,10 +267,12 @@ sudo dotnet run -i eth0 -t 80,443 -u 53 -w 1000 example.com
 
    ```
    Input: sudo ./ipk-l4-scan -i tun0 -u 20,21,53,67,68,69,123,161,162,500,520,1701,3478,3702,4500,5353,5683,6000,8080 scanme.nmap.org
-   Expected: All ports open (nmap results are open|filtered)
-   Actual: Quite poor, 4 ports were open
+   Expected: Some closed, some opened
+   Actual: 5 ports not matched out of 19
    Wireshark Capture: ICMP Port Unreachable for closed ports
    ```
+
+   Comparison with Nmap:
 
    ![Multiple UDP ports](screenshots/udp_multiple.png)
 
