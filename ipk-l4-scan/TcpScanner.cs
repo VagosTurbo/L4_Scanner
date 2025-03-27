@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 class TcpScanner : Scanner
@@ -32,11 +33,13 @@ class TcpScanner : Scanner
 
         byte[] packet = BuildTcpSynPacketIpv6(address, port);
         EndPoint remoteEP = new IPEndPoint(address, 0);
+
         await socket.SendToAsync(new ArraySegment<byte>(packet), SocketFlags.None, remoteEP);
 
-        byte[] buffer = new byte[1024];
-        var receiveTask = socket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
+        using Socket responseSocket = new Socket(AddressFamily.InterNetworkV6, SocketType.Raw, ProtocolType.Tcp);
 
+        byte[] buffer = new byte[1024];
+        var receiveTask = responseSocket.ReceiveAsync(new ArraySegment<byte>(buffer), SocketFlags.None);
         try
         {
             if (await Task.WhenAny(receiveTask, Task.Delay(timeout)) == receiveTask)
@@ -45,7 +48,11 @@ class TcpScanner : Scanner
                 int received = await receiveTask;
                 if (received > 0)
                 {
-                    return AnalyzeResponseIpv6(buffer);
+                    String result = AnalyzeResponseIpv6(buffer);
+                    if (result != "filtered")
+                    {
+                        return result;
+                    }
                 }
 
                 // Try one more time
@@ -78,9 +85,10 @@ class TcpScanner : Scanner
 
     private string AnalyzeResponseIpv6(byte[] buffer)
     {
-        // In IPv6, TCP header starts at offset 40 (after IPv6 header)
-        byte flags = buffer[53];  // 40 (IPv6 header) + 13 (TCP flags offset)
+        // Only recieved the TCP header 
+        byte flags = buffer[13];  // Flags offset
 
+        // print the flags
         if (flags == 0x12) // SYN-ACK
             return "open";
         if (flags == 0x14) // RST

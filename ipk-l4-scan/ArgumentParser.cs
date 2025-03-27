@@ -23,21 +23,39 @@ class ArgumentParser
             {
                 case "-h":
                 case "--help":
-                    throw new Exception("Help requested");
+                    PrintHelp();
+                    Environment.Exit(0);
+                    break;
                 case "-i":
                 case "--interface":
+                    if (i + 1 >= args.Length)
+                    {
+                        throw new Exception("Error: No interface specified.");
+                    }
                     InterfaceName = args[++i];
                     break;
                 case "-t":
                 case "--pt":
+                    if (i + 1 >= args.Length)
+                    {
+                        throw new Exception("Error: No port range specified.");
+                    }
                     TcpPorts = ParsePortRange(args[++i]);
                     break;
                 case "-u":
                 case "--pu":
+                    if (i + 1 >= args.Length)
+                    {
+                        throw new Exception("Error: No port range specified.");
+                    }
                     UdpPorts = ParsePortRange(args[++i]);
                     break;
                 case "-w":
                 case "--wait":
+                    if (i + 1 >= args.Length)
+                    {
+                        throw new Exception("Error: No timeout specified.");
+                    }
                     Timeout = int.Parse(args[++i]);
                     break;
                 default:
@@ -78,5 +96,11 @@ class ArgumentParser
     {
         Console.WriteLine("./ipk-l4-scan {-h} [-i interface | --interface interface] [--pu port-ranges | --pt port-ranges | -u port-ranges | -t port-ranges] {-w timeout} [hostname | ip-address]");
         Console.WriteLine();
+        Console.WriteLine("Options:");
+        Console.WriteLine("  -h, --help: Display help message");
+        Console.WriteLine("  -i, --interface: Select network interface");
+        Console.WriteLine("  -t, --pt: TCP ports to scan (1,2,3 or 1-1024)");
+        Console.WriteLine("  -u, --pu: UDP ports to scan (1,2,3 or 1-1024)");
+        Console.WriteLine("  -w, --wait: Timeout in milliseconds (default: 5000)");
     }
 }
