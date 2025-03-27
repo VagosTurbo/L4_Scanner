@@ -11,12 +11,6 @@ class Program
     {
         try
         {
-            if (args.Length == 0)
-            {
-                ListInterfaces();
-                return;
-            }
-
             var parser = new ArgumentParser(args);
 
             // Get all addresses for the interface
@@ -68,15 +62,6 @@ class Program
         {
             Console.Error.WriteLine(ex.Message);
             Environment.Exit(1);
-        }
-    }
-
-    static void ListInterfaces()
-    {
-        Console.WriteLine("Available Network Interfaces:");
-        foreach (var netInterface in NetworkInterface.GetAllNetworkInterfaces())
-        {
-            Console.WriteLine($"{netInterface.Name} - {netInterface.OperationalStatus}");
         }
     }
 

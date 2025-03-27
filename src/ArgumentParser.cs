@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
+using System.Net.NetworkInformation;
 class ArgumentParser
 {
     public string InterfaceName { get; private set; } = "";
@@ -17,6 +17,12 @@ class ArgumentParser
 
     private void ParseArguments(string[] args)
     {
+        if (args.Length == 0)
+        {
+            ListInterfaces();
+            Environment.Exit(0);
+        }
+
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
@@ -30,7 +36,8 @@ class ArgumentParser
                 case "--interface":
                     if (i + 1 >= args.Length)
                     {
-                        throw new Exception("Error: No interface specified.");
+                        ListInterfaces();
+                        Environment.Exit(0);
                     }
                     InterfaceName = args[++i];
                     break;
@@ -90,6 +97,15 @@ class ArgumentParser
             }
             else return new List<int> { int.Parse(part) };
         }).ToList();
+    }
+
+    static void ListInterfaces()
+    {
+        Console.WriteLine("Available Network Interfaces:");
+        foreach (var netInterface in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            Console.WriteLine($"{netInterface.Name} - {netInterface.OperationalStatus}");
+        }
     }
 
     private void PrintHelp()
