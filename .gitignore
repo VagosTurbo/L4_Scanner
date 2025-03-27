@@ -31,3 +31,15 @@ ipk-l4-scan/obj/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
+
+obj/
+bin/
+
+*.dll
+*.pdb
+*.runtimeconfig.json
+*.deps.json
+*.so
+createdump
+
+ipk-l4-scan

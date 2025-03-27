@@ -1,65 +1,163 @@
-# Project 2 - OMEGA: L4 Scanner
+# IPK L4 Scanner
 
-## Assignment
-1. Create a simple TCP and UDP network L4 scanner. The program will scan the specified hostname or IP address(es) (plural IP addresses in the case of multiple answers to DNS query) and ports. It will output to stdout port statuses (open, filtered, closed) (7 pts.) 
-2. Create relevant manual/documentation for the project (3 pts.)
+A network port scanner implementation in C# that supports both TCP and UDP scanning for IPv4 and IPv6 networks.
 
-## Specification
-The application scans the selected ports of device (translated onto one or more IPv4/IPv6 addresses) on a given network interface. 
+## Theory
 
-Packets/Frames should be sent using sockets. If needed, you can eavesdrop on the responses using the libpcap library.
+Port scanning is a technique used to discover which ports on a network host are open, closed, or filtered. It is a crucial tool in network security assessment and system administration, helping to:
 
-The program can be terminated at any given moment with `Ctrl + C` sequence.
+1. Identify potential security vulnerabilities
+2. Verify firewall configurations
+3. Monitor network services
+4. Detect unauthorized services
 
-Scanning should be done and return results as fast as possible. During development and testing, try scanning only the computers you own or manage.
+The process involves sending specially crafted packets to target ports and analyzing the responses. Different scanning techniques exist, with TCP SYN scanning and UDP scanning being among the most common.
 
-#### TCP scanning
-Sends only SYN packets. It does not perform a complete 3-way-handshake. If an RST response is received - the port is marked as *closed*. If no response is received from the scanned port after a given time interval, it must be verified with another packet and only then the port is marked as *filtered*. If a service is running on the port, the port is marked as *open*. See RFC 793 for more information.
+### TCP Scanning (SYN Scan)
 
-#### UDP scanning
-With UDP scanning, you can think of a given computer responding with an ICMP message of type 3, code 3 (port unreachable) when the port is *closed*. Consider the other ports as *open*.
+SYN scanning is the most commonly used and default scanning method, primarily due to its speed and efficiency. It allows scanning thousands of ports per second on a fast network, provided there are no restrictive firewalls in place. Additionally, it remains relatively stealthy since it does not establish full TCP connections.
 
-### Execution
+This method is often called **half-open scanning** because a full TCP handshake is never completed. Instead, a SYN packet is sent as if initiating a connection, and the response is observed.
+
+- A **SYN/ACK** response indicates that the port is **open (listening)**.
+- A **RST (reset)** response signifies that the port is **closed (non-listening)**.
+- If no response is received after multiple retries, the port is classified as **filtered**.
+- If an **ICMP unreachable error** (type 3, code 0, 1, 2, 3, 9, 10, or 13) is received, the port is also marked as **filtered**.
+- In rare cases, if a **SYN packet (without the ACK flag)** is received in response, the port is considered **open**. This may occur due to an uncommon TCP behavior known as **simultaneous open** or **split handshake connection**.
+
+### UDP Scanning
+
+While TCP powers most major Internet services, **UDP-based services** are also widely used. Common examples include **DNS, SNMP, and DHCP**, which operate on ports **53, 161/162, and 67/68**, respectively. Since **UDP scanning is slower and more challenging** than TCP scanning, some security auditors tend to overlook these ports.
+
+A UDP scan sends **UDP packets** to the target ports. Usually, these packets are **empty**, but for certain well-known ports, a **protocol-specific payload** is used. Based on the response (or absence of one), ports are classified as:
+
+- **Open:** If any UDP response is received (this is rare).
+- **Open | Filtered:** If no response is received, even after multiple retransmissions.
+- **Closed:** If an **ICMP port unreachable error** (type 3, code 3) is returned.
+- **Filtered:** If other ICMP unreachable errors (type 3, codes 1, 2, 9, 10, or 13) are received.
+
+## Implementation
+
+The program starts by parsing provided arguments and validating them. Then it gets all the IP addresses for the provided interface. After that, it resolves the target address or addresses if hostname was provided. It loops through all the addresses and scans the ports.
+
+### TCP Scanning
+
+For TCP scanning, the program uses the `TcpScanner` class. It builds a TCP SYN packet and sends it to the target port using raw socket. It then waits for the response and analyzes it. If the response is a SYN-ACK, the port is considered open. If the response is a RST, the port is considered closed. Otherwise, it sends the packet again and if it doesn't receive a response, the port is considered filtered.
+
+### UDP Scanning
+
+UDP scanning is implemented in the `UdpScanner` class. It builds an empty UDP packet and sends it to the target port using raw socket. It then waits for the response and analyzes it. If the response is an ICMP Port Unreachable message (type 3, code 3), the port is considered closed. Otherwise, it sends the packet again and if it doesn't receive a response, the port is considered open.
+
+### Core Classes
+
+- `Program.cs`: Main entry point, handles program flow
+- `ArgumentParser.cs`: Parses command-line arguments
+- `Scanner.cs`: Interface defining the scanning contract
+- `TcpScanner.cs`: Implements TCP SYN scanning
+- `UdpScanner.cs`: Implements UDP scanning
+
+![Class Diagram](screenshots/class-diagram.png)
+
+## Usage
+
+### Prerequisites
+
+- .NET 9.0 SDK or later
+- Linux operating system (for raw socket support)
+- Root/sudo privileges (required for raw socket operations)
+
+### Building
+
+```bash
+make
 ```
-./ipk-l4-scan [-i interface | --interface interface] [--pu port-ranges | --pt port-ranges | -u port-ranges | -t port-ranges] {-w timeout} [domain-name | ip-address]
+
+### Running
+
+The program requires sudo privileges due to raw socket usage:
+
+```
+sudo ./ipk-l4-scan {-h} [-i interface | --interface interface]
+              [--pu port-ranges | --pt port-ranges | -u port-ranges | -t port-ranges]
+              {-w timeout} [hostname | ip-address]
 ```
 
-where:
+Options:
 
-* `-i eth0` (just one interface to scan through) or `--interface`. If this parameter is not specified (and any other parameters as well), or if only `-i/--interface` is specified without a value (and any other parameters are unspecified), a list of active interfaces is printed (additional information beyond the interface list is welcome but not required).
-* `-t` or `--pt`, `-u` or `--pu` port-ranges - scanned tcp/udp ports, allowed entry e.g., `--pt 22` or `--pu 1-65535` or `--pt 22,23,24`. The --pu and --pt arguments can be specified separately, i.e. they do not have to occur both at once if the user wants only TCP or only UDP scanning
-* `-w 3000` or `--wait 3000`, is the timeout in milliseconds to wait for a response for a single port scan. This parameter is optional, in its absence the value 5000 (i.e., five seconds) is used.
-* either `domain-name` or `ip-address`, which either fully qualified domain name or IP address of scanned device.
-* All arguments can be in any order.
+- `-h, --help`: Display help message
+- `-i, --interface`: Select network interface
+- `-t, --pt`: TCP ports to scan (1,2,3 or 1-1024)
+- `-u, --pu`: UDP ports to scan (1,2,3 or 1-1024)
+- `-w, --wait`: Timeout in milliseconds (default: 5000)
 
-### Execution Examples
-```
-./ipk-l4-scan --interface eth0 -u 53,67 2001:67c:1220:809::93e5:917
-./ipk-l4-scan -i eth0 -w 1000 -t 80,443,8080 www.vutbr.cz
-```
+### Examples
 
-### Functionality Illustration
-```
-./ipk-l4-scan -i eth0 --pt 21,22,143 --pu 53,67 localhost
+1. List available interfaces:
 
-Interesting ports on localhost (127.0.0.1):
-PORT STATE
-21/tcp closed
-22/tcp open
-143/tcp filtered
-53/udp closed
-67/udp open
+```bash
+sudo dotnet run
 ```
 
-Illustrated command line output can be customised to provide relevant information in a more structured way.
+2. TCP scan of ports 80 and 443:
+
+```bash
+sudo dotnet run -i eth0 -t 80,443 example.com
+```
+
+3. UDP scan of ports 53 and 123:
+
+```bash
+sudo dotnet run -i eth0 -u 53,123 example.com
+```
+
+4. Scan port range:
+
+```bash
+sudo dotnet run -i eth0 -t 1-1024 example.com
+```
+
+5. Combined TCP and UDP scan with custom timeout:
+
+```bash
+sudo dotnet run -i eth0 -t 80,443 -u 53 -w 1000 example.com
+```
+
+## Testing
+
+For testing, I used `wireshark` to capture the packets and to see the responses. I also used `nmap` to compare the results. Also, the school `VPN` was used to test the IPv6 scanning, because the IPv6 is not working on my home network :(.
+
+1. Show all interfaces:
+
+```bash
+sudo dotnet run
+```
+
+![All interfaces](screenshots/all_interfaces.png)
+
+2. Arguments tests, basically i tested some wrong arguments to see if the program handles them correctly:
+
+![Arguments tests](screenshots/arguments_test.png)
+
+3. Scanning TCP and UDP ports 80, 443 on scanme.nmap.org using the school VPN (IPv6). The results are compared with wireshark captures and nmap scan.
+
+```bash
+sudo ./ipk-l4-scan -i tun0 -t 80,443 scanme.nmap.org
+```
+
+![TCP and UDP scan](screenshots/hostname_ipv6_ipv4_test.png)
+
+4. Scanning filtered ports, to test if the program double sends the packets. The result is compared with wireshark captures and nmap scan.
+
+```bash
+sudo ./ipk-l4-scan -i enp2s0 -t 23 147.229.9.23
+```
+
+![Filtered ports](screenshots/filtered_test.png)
 
 ## Bibliography
-* RFC 793: Transmission Control Protocol, 1981. Online. Request for Comments. Internet Engineering Task Force. [Accessed 17 February 2025]. 
-* RFC 791: Internet Protocol, 1981. Online. Request for Comments. Internet Engineering Task Force. [Accessed 17 February 2025]. 
-* RFC 768: User Datagram Protocol, 1980. Online. Request for Comments. Internet Engineering Task Force. [Accessed 17 February 2025]. 
-* Nmap: The Art of Port Scanning. Online. Available from: https://nmap.org/nmap_doc.html#port_unreach [Accessed 17 February 2025]. 
-* TCP SYN (Stealth) Scan (-sS) | Nmap Network Scanning. Online. Available from: https://nmap.org/book/synscan.html [Accessed 17 February 2025]. 
-* Port scanner, 2024. Wikipedia. Online. Available from: https://en.wikipedia.org/w/index.php?title=Port_scanner&oldid=1225200572 [Accessed 17 February 2025]. 
-* DEERING, Steve E. and HINDEN, Bob, 2017. RFC 8200: Internet Protocol, Version 6 (IPv6) Specification. Online. Request for Comments. Internet Engineering Task Force. [Accessed 17 February 2025]. 
-* GILLIGAN, Robert E., BOUND, Jim, THOMSON, Susan and STEVENS, W. Richard, 1999. RFC 2553: Basic Socket Interface Extensions for IPv6. Online. Request for Comments. Internet Engineering Task Force. [Accessed 17 February 2025]. 
-* SATRAPA, Pavel. IPv6: internetový protokol verze 6. CZ. NIC, 2019. ISBN: 978-80-88168-43-0
+
+1. Stevens, W. R. (1994). TCP/IP Illustrated, Volume 1: The Protocols. Addison-Wesley.
+2. Postel, J. (1981). Transmission Control Protocol. RFC 793.
+3. Postel, J. (1980). User Datagram Protocol. RFC 768.
+4. [Wireshark](https://www.wireshark.org/docs/)
+5. [Nmap](https://nmap.org/book/man.html)
