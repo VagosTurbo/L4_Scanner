@@ -66,17 +66,8 @@ class Program
         }
         catch (Exception ex)
         {
-            if (ex.Message == "Help requested")
-            {
-                Console.WriteLine("./ipk-l4-scan {-h} [-i interface | --interface interface] [--pu port-ranges | --pt port-ranges | -u port-ranges | -t port-ranges] {-w timeout} [hostname | ip-address]");
-                Console.WriteLine();
-                Environment.Exit(0);
-            }
-            else
-            {
-                Console.Error.WriteLine(ex.Message);
-                Environment.Exit(1);
-            }
+            Console.Error.WriteLine(ex.Message);
+            Environment.Exit(1);
         }
     }
 
