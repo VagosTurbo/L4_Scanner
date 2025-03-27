@@ -124,35 +124,7 @@ sudo dotnet run -i eth0 -t 80,443 -u 53 -w 1000 example.com
 
 ## Testing
 
-### Testing Environment
-
-#### Hardware
-
-- CPU: Intel Core i7-12700K
-- RAM: 32GB DDR4
-- Network: 1Gbps Ethernet connection
-- OS: Ubuntu 22.04 LTS
-
-#### Software Versions
-
-- .NET SDK: 9.0.103
-- Linux Kernel: 6.11.0-19-generic
-- Wireshark: 4.2.0
-- Nmap: 7.94
-- Git: 2.34.0
-
-#### Network Topology
-
-1. Local Network Testing:
-
-   - Direct connection to home network
-   - Target: Local development server (192.168.1.100)
-   - Network: 192.168.1.0/24
-
-2. Remote Testing (via School VPN):
-   - VPN: OpenVPN
-   - Target: scanme.nmap.org
-   - IPv6 enabled network
+Majority of the testing was done on Ubuntu 22.04 LTS. Using `nmap` and `wireshark` to verify the results. Because of the need of ipv6 support, the testing was done on school VPN.
 
 ### Test Cases
 
